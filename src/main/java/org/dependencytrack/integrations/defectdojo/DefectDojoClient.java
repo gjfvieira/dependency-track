@@ -45,7 +45,7 @@ public class DefectDojoClient {
         this.baseURL = baseURL;
     }
 
-    public void uploadDependencyTrackFindings(final String token, final String engagementId, final InputStream findingsJson) {
+    public boolean uploadDependencyTrackFindings(final String token, final String engagementId, final InputStream findingsJson) {
         LOGGER.debug("Uploading Dependency-Track findings to DefectDojo");
         final UnirestInstance ui = UnirestFactory.getUnirestInstance();
         final HttpRequestWithBody request = ui.post(baseURL + "/api/v2/import-scan/");
@@ -65,11 +65,13 @@ public class DefectDojoClient {
                 .asString();
         if (response.getStatus() == 201) {
             LOGGER.debug("Successfully uploaded findings to DefectDojo");
+            return true ;
         } else {
             LOGGER.warn("DefectDojo Client did not receive expected response while attempting to upload "
                     + "Dependency-Track findings. HTTP response code: "
                     + response.getStatus() + " - " + response.getStatusText());
             uploader.handleUnexpectedHttpResponse(LOGGER, request.getUrl(), response.getStatus(), response.getStatusText());
+            return false ;
         }
     }
 
@@ -142,7 +144,7 @@ public class DefectDojoClient {
      * A Reimport will reuse (overwrite) the existing test, instead of create a new test.
      * The Successfully reimport will also  increase the reimport counter by 1.
     */
-    public void reimportDependencyTrackFindings(final String token, final String engagementId, final InputStream findingsJson, final String testId) {
+    public boolean reimportDependencyTrackFindings(final String token, final String engagementId, final InputStream findingsJson, final String testId) {
         LOGGER.debug("Re-reimport Dependency-Track findings to DefectDojo per Engagement");
         final UnirestInstance ui = UnirestFactory.getUnirestInstance();
         final HttpRequestWithBody request = ui.post(baseURL + "/api/v2/reimport-scan/");
@@ -162,11 +164,13 @@ public class DefectDojoClient {
                 .asString();
         if (response.getStatus() == 201) {
             LOGGER.debug("Successfully reimport findings to DefectDojo");
+            return true;
         } else {
             LOGGER.warn("DefectDojo Client did not receive expected response while attempting to reimport"
                     + "Dependency-Track findings. HTTP response code: "
                     + response.getStatus() + " - " + response.getStatusText());
             uploader.handleUnexpectedHttpResponse(LOGGER, request.getUrl(), response.getStatus(), response.getBody());
+            return false;
         }
     }
 

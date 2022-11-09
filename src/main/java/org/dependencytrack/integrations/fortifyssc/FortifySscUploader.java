@@ -70,23 +70,25 @@ public class FortifySscUploader extends AbstractIntegrationPoint implements Proj
     }
 
     @Override
-    public void upload(final Project project, final InputStream payload) {
+    public boolean upload(final Project project, final InputStream payload) {
         final ConfigProperty sscUrl = qm.getConfigProperty(FORTIFY_SSC_URL.getGroupName(), FORTIFY_SSC_URL.getPropertyName());
         final ConfigProperty citoken = qm.getConfigProperty(FORTIFY_SSC_TOKEN.getGroupName(), FORTIFY_SSC_TOKEN.getPropertyName());
         final ProjectProperty applicationId = qm.getProjectProperty(project, FORTIFY_SSC_ENABLED.getGroupName(), APPID_PROPERTY);
         if (citoken == null || citoken.getPropertyValue() == null) {
             LOGGER.warn("Fortify SSC token not specified. Aborting");
-            return;
+            return false;
         }
         try {
             final FortifySscClient client = new FortifySscClient(this, new URL(sscUrl.getPropertyValue()));
             final String token = client.generateOneTimeUploadToken(DataEncryption.decryptAsString(citoken.getPropertyValue()));
             if (token != null) {
-                client.uploadDependencyTrackFindings(token, applicationId.getPropertyValue(), payload);
+                return client.uploadDependencyTrackFindings(token, applicationId.getPropertyValue(), payload);
             }
         } catch (Exception e) {
             LOGGER.error("An error occurred attempting to upload findings to Fortify Software Security Center", e);
             handleException(LOGGER, e);
+            return false;
         }
+        return false;
     }
 }

@@ -30,5 +30,5 @@ public interface ProjectFindingUploader extends FindingUploader {
 
     InputStream process(Project project, List<Finding> findings);
 
-    void upload(Project project, InputStream payload);
+    boolean upload(Project project, InputStream payload);
 }

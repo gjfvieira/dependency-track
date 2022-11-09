@@ -68,7 +68,7 @@ public class FortifySscClient {
         return null;
     }
 
-    public void uploadDependencyTrackFindings(final String token, final String applicationVersion, final InputStream findingsJson) {
+    public boolean uploadDependencyTrackFindings(final String token, final String applicationVersion, final InputStream findingsJson) {
         LOGGER.debug("Uploading Dependency-Track findings to Fortify SSC");
         final UnirestInstance ui = UnirestFactory.getUnirestInstance();
         final HashMap<String, Object> params = new HashMap<>();
@@ -83,11 +83,13 @@ public class FortifySscClient {
                 .asString();
         if (response.getStatus() == 200) {
             LOGGER.debug("Successfully uploaded findings to Fortify SSC");
+            return true;
         } else {
             LOGGER.warn("Fortify SSC Client did not receive expected response while attempting to upload "
                     + "Dependency-Track findings. HTTP response code: "
                     + response.getStatus() + " - " + response.getStatusText());
             uploader.handleUnexpectedHttpResponse(LOGGER, request.getUrl(), response.getStatus(), response.getStatusText());
+            return false;
         }
     }
 }
