@@ -42,6 +42,7 @@ import org.dependencytrack.notification.NotificationConstants;
 import org.dependencytrack.notification.NotificationGroup;
 import org.dependencytrack.notification.NotificationScope;
 import org.dependencytrack.resources.v1.vo.AnalysisRequest;
+import org.dependencytrack.util.NotificationUtil;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.servlet.ServletContainer;
 import org.glassfish.jersey.test.DeploymentContext;
@@ -176,9 +177,37 @@ public class AnalysisResourceTest extends ResourceTest {
                 .request()
                 .header(X_API_KEY, apiKey)
                 .get(Response.class);
-        assertThat(response.getStatus()).isEqualTo(HttpStatus.SC_OK);
+        assertThat(response.getStatus()).isEqualTo(HttpStatus.SC_NOT_FOUND);
         assertThat(response.getHeaderString(TOTAL_COUNT_HEADER)).isNull();
-        assertThat(getPlainTextBody(response)).isEmpty();
+        assertThat(getPlainTextBody(response)).isEqualTo("No analysis exists.");
+    }
+
+    @Test
+    public void noAnalysisExists() {
+        initializeWithPermissions(Permissions.VIEW_VULNERABILITY);
+        final Project project = qm.createProject("Acme Example", null, "1.0", null, null, null, true, false);
+
+        var component = new Component();
+        component.setProject(project);
+        component.setName("Acme Component");
+        component.setVersion("2.0");
+        component = qm.createComponent(component, false);
+
+        var vulnerability = new Vulnerability();
+        vulnerability.setVulnId("INT-003");
+        vulnerability.setSource(Vulnerability.Source.INTERNAL);
+        vulnerability.setSeverity(Severity.HIGH);
+        vulnerability.setComponents(List.of(component));
+        vulnerability = qm.createVulnerability(vulnerability, false);
+
+        final Response response = target(V1_ANALYSIS)
+                .queryParam("component", component.getUuid())
+                .queryParam("vulnerability", vulnerability.getUuid())
+                .request()
+                .header(X_API_KEY, apiKey)
+                .get(Response.class);
+        assertThat(response.getStatus()).isEqualTo(HttpStatus.SC_NOT_FOUND);
+        assertThat(getPlainTextBody(response)).isEqualTo("No analysis exists.");
     }
 
     @Test
@@ -332,13 +361,15 @@ public class AnalysisResourceTest extends ResourceTest {
                 .doesNotContainKey("commenter"); // Not set when authenticating via API key
         assertThat(responseJson.getBoolean("isSuppressed")).isTrue();
 
-        assertConditionWithTimeout(() -> NOTIFICATIONS.size() == 1, Duration.ofSeconds(5));
+        assertConditionWithTimeout(() -> NOTIFICATIONS.size() == 2, Duration.ofSeconds(5));
+        final Notification projectNotification = NOTIFICATIONS.poll();
+        assertThat(projectNotification).isNotNull();
         final Notification notification = NOTIFICATIONS.poll();
         assertThat(notification).isNotNull();
         assertThat(notification.getScope()).isEqualTo(NotificationScope.PORTFOLIO.name());
         assertThat(notification.getGroup()).isEqualTo(NotificationGroup.PROJECT_AUDIT_CHANGE.name());
         assertThat(notification.getLevel()).isEqualTo(NotificationLevel.INFORMATIONAL);
-        assertThat(notification.getTitle()).isEqualTo(NotificationConstants.Title.ANALYSIS_DECISION_NOT_AFFECTED);
+        assertThat(notification.getTitle()).isEqualTo(NotificationUtil.generateNotificationTitle(NotificationConstants.Title.ANALYSIS_DECISION_NOT_AFFECTED, project));
         assertThat(notification.getContent()).isEqualTo("An analysis decision was made to a finding affecting a project");
     }
 
@@ -380,13 +411,15 @@ public class AnalysisResourceTest extends ResourceTest {
         assertThat(responseJson.getJsonArray("analysisComments")).isEmpty();
         assertThat(responseJson.getBoolean("isSuppressed")).isFalse();
 
-        assertConditionWithTimeout(() -> NOTIFICATIONS.size() == 1, Duration.ofSeconds(5));
+        assertConditionWithTimeout(() -> NOTIFICATIONS.size() == 2, Duration.ofSeconds(5));
+        final Notification projectNotification = NOTIFICATIONS.poll();
+        assertThat(projectNotification).isNotNull();
         final Notification notification = NOTIFICATIONS.poll();
         assertThat(notification).isNotNull();
         assertThat(notification.getScope()).isEqualTo(NotificationScope.PORTFOLIO.name());
         assertThat(notification.getGroup()).isEqualTo(NotificationGroup.PROJECT_AUDIT_CHANGE.name());
         assertThat(notification.getLevel()).isEqualTo(NotificationLevel.INFORMATIONAL);
-        assertThat(notification.getTitle()).isEqualTo(NotificationConstants.Title.ANALYSIS_DECISION_NOT_SET);
+        assertThat(notification.getTitle()).isEqualTo(NotificationUtil.generateNotificationTitle(NotificationConstants.Title.ANALYSIS_DECISION_NOT_SET, project));
         assertThat(notification.getContent()).isEqualTo("An analysis decision was made to a finding affecting a project");
     }
 
@@ -456,18 +489,20 @@ public class AnalysisResourceTest extends ResourceTest {
                 .doesNotContainKey("commenter"); // Not set when authenticating via API key
         assertThat(responseJson.getBoolean("isSuppressed")).isFalse();
 
-        assertConditionWithTimeout(() -> NOTIFICATIONS.size() == 1, Duration.ofSeconds(5));
+        assertConditionWithTimeout(() -> NOTIFICATIONS.size() == 2, Duration.ofSeconds(5));
+        final Notification projectNotification = NOTIFICATIONS.poll();
+        assertThat(projectNotification).isNotNull();
         final Notification notification = NOTIFICATIONS.poll();
         assertThat(notification).isNotNull();
         assertThat(notification.getScope()).isEqualTo(NotificationScope.PORTFOLIO.name());
         assertThat(notification.getGroup()).isEqualTo(NotificationGroup.PROJECT_AUDIT_CHANGE.name());
         assertThat(notification.getLevel()).isEqualTo(NotificationLevel.INFORMATIONAL);
-        assertThat(notification.getTitle()).isEqualTo(NotificationConstants.Title.ANALYSIS_DECISION_EXPLOITABLE);
+        assertThat(notification.getTitle()).isEqualTo(NotificationUtil.generateNotificationTitle(NotificationConstants.Title.ANALYSIS_DECISION_EXPLOITABLE, project));
         assertThat(notification.getContent()).isEqualTo("An analysis decision was made to a finding affecting a project");
     }
 
     @Test
-    public void updateAnalysisWithNoChangesTest() {
+    public void updateAnalysisWithNoChangesTest() throws Exception{
         initializeWithPermissions(Permissions.VULNERABILITY_ANALYSIS);
 
         final Project project = qm.createProject("Acme Example", null, "1.0", null, null, null, true, false);
@@ -513,7 +548,7 @@ public class AnalysisResourceTest extends ResourceTest {
                 .hasFieldOrPropertyWithValue("comment", Json.createValue("Analysis comment here"))
                 .hasFieldOrPropertyWithValue("commenter", Json.createValue("Jane Doe"));
 
-        assertThat(NOTIFICATIONS).isEmpty();
+        assertConditionWithTimeout(() -> NOTIFICATIONS.size() == 1, Duration.ofSeconds(5));
     }
 
     @Test
@@ -571,13 +606,15 @@ public class AnalysisResourceTest extends ResourceTest {
                 .hasFieldOrPropertyWithValue("comment", Json.createValue("Vendor Response: WILL_NOT_FIX → NOT_SET"))
                 .doesNotContainKey("commenter"); // Not set when authenticating via API key
 
-        assertConditionWithTimeout(() -> NOTIFICATIONS.size() == 1, Duration.ofSeconds(5));
+        assertConditionWithTimeout(() -> NOTIFICATIONS.size() == 2, Duration.ofSeconds(5));
+        final Notification projectNotification = NOTIFICATIONS.poll();
+        assertThat(projectNotification).isNotNull();
         final Notification notification = NOTIFICATIONS.poll();
         assertThat(notification).isNotNull();
         assertThat(notification.getScope()).isEqualTo(NotificationScope.PORTFOLIO.name());
         assertThat(notification.getGroup()).isEqualTo(NotificationGroup.PROJECT_AUDIT_CHANGE.name());
         assertThat(notification.getLevel()).isEqualTo(NotificationLevel.INFORMATIONAL);
-        assertThat(notification.getTitle()).isEqualTo(NotificationConstants.Title.ANALYSIS_DECISION_NOT_SET);
+        assertThat(notification.getTitle()).isEqualTo(NotificationUtil.generateNotificationTitle(NotificationConstants.Title.ANALYSIS_DECISION_NOT_SET, project));
         assertThat(notification.getContent()).isEqualTo("An analysis decision was made to a finding affecting a project");
     }
 
@@ -739,13 +776,15 @@ public class AnalysisResourceTest extends ResourceTest {
                 .doesNotContainKey("commenter"); // Not set when authenticating via API key
         assertThat(responseJson.getBoolean("isSuppressed")).isFalse();
 
-        assertConditionWithTimeout(() -> NOTIFICATIONS.size() == 1, Duration.ofSeconds(5));
+        assertConditionWithTimeout(() -> NOTIFICATIONS.size() == 2, Duration.ofSeconds(5));
+        final Notification projectNotification = NOTIFICATIONS.poll();
+        assertThat(projectNotification).isNotNull();
         final Notification notification = NOTIFICATIONS.poll();
         assertThat(notification).isNotNull();
         assertThat(notification.getScope()).isEqualTo(NotificationScope.PORTFOLIO.name());
         assertThat(notification.getGroup()).isEqualTo(NotificationGroup.PROJECT_AUDIT_CHANGE.name());
         assertThat(notification.getLevel()).isEqualTo(NotificationLevel.INFORMATIONAL);
-        assertThat(notification.getTitle()).isEqualTo(NotificationConstants.Title.ANALYSIS_DECISION_NOT_AFFECTED);
+        assertThat(notification.getTitle()).isEqualTo(NotificationUtil.generateNotificationTitle(NotificationConstants.Title.ANALYSIS_DECISION_NOT_AFFECTED, project));
         assertThat(notification.getContent()).isEqualTo("An analysis decision was made to a finding affecting a project");
     }
 

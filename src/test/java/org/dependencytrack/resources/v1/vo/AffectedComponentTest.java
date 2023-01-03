@@ -2,11 +2,17 @@ package org.dependencytrack.resources.v1.vo;
 
 
 import com.github.packageurl.PackageURL;
+import org.dependencytrack.model.AffectedVersionAttribution;
+import org.dependencytrack.model.Vulnerability;
 import org.dependencytrack.model.VulnerableSoftware;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Suite;
 import org.junit.runners.Suite.SuiteClasses;
+
+import java.sql.Date;
+import java.time.Instant;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -62,6 +68,20 @@ public class AffectedComponentTest {
             assertThat(affectedComponent.getVersionStartExcluding()).isNull();
             assertThat(affectedComponent.getVersionEndIncluding()).isNull();
             assertThat(affectedComponent.getVersionEndExcluding()).isNull();
+        }
+
+        @Test
+        public void shouldMapPurlToPurlIdentityEvenWhenNoNamespace() {
+            final var vs = new VulnerableSoftware();
+            vs.setPurlType(PackageURL.StandardTypes.GOLANG);
+            vs.setPurlName("bar");
+            vs.setPurlVersion("baz");
+            vs.setPurlQualifiers("{\"ping\":\"pong\"}");
+            vs.setPurlSubpath("1/2/3");
+
+            final var affectedComponent = new AffectedComponent(vs);
+            assertThat(affectedComponent.getIdentityType()).isEqualTo(AffectedComponent.IdentityType.PURL);
+            assertThat(affectedComponent.getIdentity()).isEqualTo("pkg:golang/bar@baz?ping=pong#1/2/3");
         }
 
         @Test
@@ -152,6 +172,17 @@ public class AffectedComponentTest {
             assertThat(affectedComponent.getVersionEndExcluding()).isEqualTo("qux");
         }
 
+        @Test
+        public void shouldMapAffectedPackageAttribution() {
+            final var vs = new VulnerableSoftware();
+            AffectedVersionAttribution ava = new AffectedVersionAttribution();
+            ava.setVulnerableSoftware(vs);
+            ava.setSource(Vulnerability.Source.SNYK);
+            ava.setFirstSeen(Date.from(Instant.now()));
+            vs.setAffectedVersionAttributions(List.of(ava));
+            final var affectedComponent = new AffectedComponent(vs);
+            assertThat(affectedComponent.getAffectedVersionAttributions().get(0).getSource()).isEqualTo(Vulnerability.Source.SNYK);
+        }
     }
 
     public static class ToVulnerableSoftwareTest {
@@ -291,7 +322,6 @@ public class AffectedComponentTest {
             assertThat(vs.getVersionEndIncluding()).isEqualTo("baz");
             assertThat(vs.getVersionEndExcluding()).isEqualTo("qux");
         }
-
     }
 
 }
