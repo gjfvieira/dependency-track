@@ -76,6 +76,7 @@ import org.dependencytrack.notification.NotificationScope;
 import org.dependencytrack.notification.publisher.Publisher;
 import org.dependencytrack.tasks.scanners.AnalyzerIdentity;
 
+import javax.jdo.FetchPlan;
 import javax.jdo.PersistenceManager;
 import javax.jdo.Query;
 import javax.jdo.Transaction;
@@ -84,6 +85,7 @@ import java.security.Principal;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -1246,6 +1248,36 @@ public class QueryManager extends AlpineQueryManager {
     }
 
     /**
+     * Detach a persistent object using the provided fetch groups.
+     * <p>
+     * {@code fetchGroups} will override any other fetch groups set on the {@link PersistenceManager},
+     * even the default one. If inclusion of the default fetch group is desired, it must be
+     * included in {@code fetchGroups} explicitly.
+     * <p>
+     * Eventually, this may be moved to {@link alpine.persistence.AbstractAlpineQueryManager}.
+     *
+     * @param object      The persistent object to detach
+     * @param fetchGroups Fetch groups to use for this operation
+     * @param <T>         Type of the object
+     * @return The detached object
+     * @since 4.8.0
+     */
+    public <T> T detachWithGroups(final T object, final List<String> fetchGroups) {
+        final int origDetachOptions = pm.getFetchPlan().getDetachmentOptions();
+        final Set<?> origFetchGroups = pm.getFetchPlan().getGroups();
+        try {
+            pm.getFetchPlan().setDetachmentOptions(FetchPlan.DETACH_LOAD_FIELDS);
+            pm.getFetchPlan().setGroups(fetchGroups);
+            return pm.detachCopy(object);
+        } finally {
+            // Restore previous settings to not impact other operations performed
+            // by this persistence manager.
+            pm.getFetchPlan().setDetachmentOptions(origDetachOptions);
+            pm.getFetchPlan().setGroups(origFetchGroups);
+        }
+    }
+
+    /**
      * Convenience method to execute a given {@link Runnable} within the context of a {@link Transaction}.
      * <p>
      * Eventually, this may be moved to {@link alpine.persistence.AbstractAlpineQueryManager}.
@@ -1272,7 +1304,7 @@ public class QueryManager extends AlpineQueryManager {
         pm.currentTransaction().begin();
         pm.deletePersistentAll(team.getApiKeys());
         String aclDeleteQuery = """
-            DELETE FROM PROJECT_ACCESS_TEAMS WHERE \"PROJECT_ACCESS_TEAMS\".\"TEAM_ID\" = ?      
+            DELETE FROM \"PROJECT_ACCESS_TEAMS\" WHERE \"PROJECT_ACCESS_TEAMS\".\"TEAM_ID\" = ?      
         """;
         final Query query = pm.newQuery(JDOQuery.SQL_QUERY_LANGUAGE, aclDeleteQuery);
         query.executeWithArray(team.getId());
